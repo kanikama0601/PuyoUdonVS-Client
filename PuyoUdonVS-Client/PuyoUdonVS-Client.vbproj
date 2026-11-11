@@ -4,15 +4,29 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>PuyoUdonVS_Client</RootNamespace>
+    <AssemblyName>PuyoUdonVS-Client</AssemblyName>
     <StartupObject>Sub Main</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <MyType>WindowsForms</MyType>
+    <OptionStrict>On</OptionStrict>
+    <OptionInfer>On</OptionInfer>
+    <Product>ぷようどんVS</Product>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <Import Include="System.Data" />
     <Import Include="System.Drawing" />
     <Import Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- うどんのイラストは exe に埋め込む（リソース名: PuyoUdonVS_Client.Images.<ファイル名>） -->
+    <EmbeddedResource Include="Resources\Images\*.png" LogicalName="PuyoUdonVS_Client.Images.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

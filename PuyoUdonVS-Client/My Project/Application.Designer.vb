@@ -22,13 +22,14 @@ Namespace My
             MyBase.New(Global.Microsoft.VisualBasic.ApplicationServices.AuthenticationMode.Windows)
             Me.IsSingleInstance = False
             Me.EnableVisualStyles = True
+            Me.HighDpiMode = Global.System.Windows.Forms.HighDpiMode.PerMonitorV2
             Me.SaveMySettingsOnExit = True
             Me.ShutDownStyle = Global.Microsoft.VisualBasic.ApplicationServices.ShutdownMode.AfterMainFormCloses
         End Sub
 
         <Global.System.Diagnostics.DebuggerStepThroughAttribute()>
         Protected Overrides Sub OnCreateMainForm()
-            Me.MainForm = Form1
+            Me.MainForm = Global.PuyoUdonVS_Client.MainForm
         End Sub
     End Class
 End Namespace
