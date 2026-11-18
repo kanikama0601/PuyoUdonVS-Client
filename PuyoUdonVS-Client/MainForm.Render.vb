@@ -246,7 +246,8 @@ Partial Public Class MainForm
         _mouse = ToLogical(e.Location)
         If _dragSlider <> 0 Then SetSliderFromMouse()
         Dim hand = _buttons.Any(Function(b) b.Enabled AndAlso b.Rect.Contains(_mouse)) OrElse
-                   (_screen = Screen.Settings AndAlso (SliderHit(BgmSlider).Contains(_mouse) OrElse SliderHit(SeSlider).Contains(_mouse)))
+                   (_screen = Screen.Settings AndAlso _settingsTab = 0 AndAlso (SliderHit(BgmSlider).Contains(_mouse) OrElse SliderHit(SeSlider).Contains(_mouse))) OrElse
+                   (_screen = Screen.Settings AndAlso _settingsTab = 1 AndAlso HitSlot(_mouse).Action >= 0)
         Cursor = If(hand, Cursors.Hand, Cursors.Default)
     End Sub
 
@@ -257,9 +258,23 @@ Partial Public Class MainForm
 
     Protected Overrides Sub OnMouseDown(e As MouseEventArgs)
         MyBase.OnMouseDown(e)
-        If e.Button <> MouseButtons.Left Then Return
         _mouse = ToLogical(e.Location)
-        If _screen = Screen.Settings AndAlso _sound IsNot Nothing AndAlso _sound.Available Then
+        If _screen = Screen.Settings AndAlso _settingsTab = 1 Then
+            Dim hs = HitSlot(_mouse)
+            If hs.Action >= 0 Then
+                If e.Button = MouseButtons.Right Then
+                    ' 右クリックでその枠を空欄にする
+                    _input.Config.ClearKey(CType(hs.Action, GameAction), hs.Slot)
+                    _capAction = -1
+                ElseIf e.Button = MouseButtons.Left Then
+                    _capAction = hs.Action : _capSlot = hs.Slot
+                    _input.Reset()
+                End If
+                Return
+            End If
+        End If
+        If e.Button <> MouseButtons.Left Then Return
+        If _screen = Screen.Settings AndAlso _settingsTab = 0 AndAlso _sound IsNot Nothing AndAlso _sound.Available Then
             If SliderHit(BgmSlider).Contains(_mouse) Then
                 _dragSlider = 1
             ElseIf SliderHit(SeSlider).Contains(_mouse) Then
@@ -303,9 +318,12 @@ Partial Public Class MainForm
         If _screen <> Screen.Title Then Return
         ShowTitleControls(False)
         _screen = Screen.Settings
+        _settingsTab = 0
+        _capAction = -1
     End Sub
 
     Private Sub CloseSettings()
+        _capAction = -1
         _dragSlider = 0
         Capture = False
         _screen = Screen.Title
@@ -639,21 +657,148 @@ Partial Public Class MainForm
     ' 設定
     ' =====================================================================
 
+    Private _settingsTab As Integer ' 0=おと 1=そうさ
+    Private _capAction As Integer = -1 ' キー入力待ちの枠（-1=なし）
+    Private _capSlot As Integer
+
+    Private Shared ReadOnly SettingsCard As New RectangleF(130, 118, 700, 476)
+    Private Const SlotX0 As Single = 320
+    Private Const SlotW As Single = 150
+    Private Const SlotGap As Single = 8
+    Private Const SlotH As Single = 34
+    Private Const RowY0 As Single = 212
+    Private Const RowDy As Single = 42
+
+    Private Shared Function SlotRect(action As Integer, slot As Integer) As RectangleF
+        Return New RectangleF(SlotX0 + slot * (SlotW + SlotGap) - 20, RowY0 + action * RowDy, SlotW, SlotH)
+    End Function
+
+    Private Shared Function HitSlot(p As PointF) As (Action As Integer, Slot As Integer)
+        For a = 0 To KeyConfig.ActionCount - 1
+            For i = 0 To KeyConfig.SlotCount - 1
+                If SlotRect(a, i).Contains(p) Then Return (a, i)
+            Next
+        Next
+        Return (-1, -1)
+    End Function
+
+    Private Sub SelectSettingsTab(tab As Integer)
+        _settingsTab = tab
+        _capAction = -1
+    End Sub
+
+    ''' <summary>設定画面の毎フレーム処理（キー入力待ちと Esc）。</summary>
+    Private Sub UpdateSettings()
+        If _capAction < 0 Then
+            If _input.WasPressed(Keys.Escape) Then CloseSettings()
+            Return
+        End If
+        For Each k In _input.PressedKeys()
+            If k = Keys.Escape Then
+                _capAction = -1
+            ElseIf k = Keys.Delete OrElse k = Keys.Back Then
+                _input.Config.ClearKey(CType(_capAction, GameAction), _capSlot)
+                _capAction = -1
+            ElseIf KeyConfig.IsReserved(k) Then
+                Toast("そのキーは割り当てられません")
+            Else
+                _input.Config.SetKey(CType(_capAction, GameAction), _capSlot, k)
+                _capAction = -1
+            End If
+            Exit For
+        Next
+    End Sub
+
     Private Sub DrawSettings(g As Graphics)
-        DrawLogo(g, 480, 70, 48)
-        Dim card As New RectangleF(240, 140, 480, 400)
+        DrawLogo(g, 480, 62, 40)
+        Dim card = SettingsCard
         FillRound(g, New RectangleF(card.X + 4, card.Y + 6, card.Width, card.Height), 20, Color.FromArgb(90, 60, 30, 10))
         FillRound(g, card, 20, Color.FromArgb(245, 255, 250, 238), ColBrown, 3)
-        DrawText(g, "せってい", 28, 480, 184, ColBrownDark)
 
-        If _sound Is Nothing OrElse Not _sound.Available Then
-            DrawText(g, "サウンドデバイスが見つからないため、音は鳴りません", 16, 480, 320, ColBrown, bold:=False)
+        DrawButton(g, New RectangleF(300, 134, 170, 38), "おと", Sub() SelectSettingsTab(0), True, _settingsTab = 0, 18)
+        DrawButton(g, New RectangleF(490, 134, 170, 38), "そうさ", Sub() SelectSettingsTab(1), True, _settingsTab = 1, 18)
+
+        If _settingsTab = 0 Then
+            If _sound Is Nothing OrElse Not _sound.Available Then
+                DrawText(g, "サウンドデバイスが見つからないため、音は鳴りません", 16, 480, 320, ColBrown, bold:=False)
+            Else
+                DrawSlider(g, "BGM の音量", BgmSlider, _sound.BgmVolume)
+                DrawSlider(g, "効果音の音量", SeSlider, _sound.SeVolume)
+                DrawText(g, "効果音は、つまみを離すとサンプルが鳴ります", 13, 480, 424, ColBrown, bold:=False)
+            End If
+            DrawButton(g, New RectangleF(380, 500, 200, 44), "もどる (Esc)", AddressOf CloseSettings, primary:=False, fontSize:=18)
         Else
-            DrawSlider(g, "BGM の音量", BgmSlider, _sound.BgmVolume)
-            DrawSlider(g, "効果音の音量", SeSlider, _sound.SeVolume)
-            DrawText(g, "効果音は、つまみを離すとサンプルが鳴ります", 13, 480, 424, ColBrown, bold:=False)
+            DrawText(g, "枠をクリックしてキーを押す　右クリック／Delete：空欄　Esc：取り消し", 13, 480, 192, ColBrown, bold:=False)
+            For a = 0 To KeyConfig.ActionCount - 1
+                Dim y = RowY0 + a * RowDy + SlotH / 2
+                DrawText(g, KeyConfig.ActionNames(a), 18, 160, y, ColBrownDark, StringAlignment.Near)
+                For i = 0 To KeyConfig.SlotCount - 1
+                    Dim r = SlotRect(a, i)
+                    Dim waiting = (_capAction = a AndAlso _capSlot = i)
+                    Dim k = _input.Config.GetKey(CType(a, GameAction), i)
+                    Dim hover = r.Contains(_mouse)
+                    Dim fill = If(waiting, Color.FromArgb(255, 236, 170), If(hover, Color.White, Color.FromArgb(255, 252, 240)))
+                    FillRound(g, r, 8, fill, If(waiting, ColRed, ColBrown), If(waiting, 3, 2))
+                    If waiting Then
+                        DrawText(g, "キーを押して…", 14, r.X + r.Width / 2, y, ColRed)
+                    ElseIf k = Keys.None Then
+                        DrawText(g, "―", 16, r.X + r.Width / 2, y, Color.FromArgb(170, 150, 130), bold:=False)
+                    Else
+                        DrawText(g, KeyConfig.DisplayName(k), 16, r.X + r.Width / 2, y, ColBrownDark)
+                    End If
+                Next
+            Next
+            DrawButton(g, New RectangleF(145, 500, 160, 44), "初期設定", AddressOf ResetControls, primary:=False, fontSize:=17)
+            DrawButton(g, New RectangleF(315, 500, 160, 44), "エクスポート", AddressOf ExportControls, primary:=False, fontSize:=17)
+            DrawButton(g, New RectangleF(485, 500, 160, 44), "インポート", AddressOf ImportControls, primary:=False, fontSize:=17)
+            DrawButton(g, New RectangleF(655, 500, 160, 44), "もどる (Esc)", AddressOf CloseSettings, primary:=False, fontSize:=17)
         End If
-        DrawButton(g, New RectangleF(380, 470, 200, 46), "もどる (Esc)", AddressOf CloseSettings, primary:=False, fontSize:=18)
+    End Sub
+
+    Private Sub ResetControls()
+        _capAction = -1
+        _input.Config.ResetToDefault()
+        Toast("操作を初期設定にもどしました")
+    End Sub
+
+    ''' <summary>ファイルダイアログを開く。開いている間はゲームループを止める。</summary>
+    Private Function RunDialog(dlg As FileDialog) As Boolean
+        _capAction = -1
+        RemoveHandler Application.Idle, AddressOf OnApplicationIdle
+        Try
+            Return dlg.ShowDialog(Me) = DialogResult.OK
+        Finally
+            AddHandler Application.Idle, AddressOf OnApplicationIdle
+            _nextFrameMs = _clock.Elapsed.TotalMilliseconds
+            _input.Reset()
+        End Try
+    End Function
+
+    Private Sub ExportControls()
+        Using dlg As New SaveFileDialog With {
+            .Title = "操作設定のエクスポート", .Filter = "JSON ファイル (*.json)|*.json",
+            .FileName = "puyoudon-controls.json", .DefaultExt = "json", .OverwritePrompt = True}
+            If Not RunDialog(dlg) Then Return
+            Try
+                IO.File.WriteAllText(dlg.FileName, _input.Config.ToJson(), New Text.UTF8Encoding(False))
+                Toast("エクスポートしました")
+            Catch ex As Exception
+                Toast("書き込めませんでした: " & ex.Message)
+            End Try
+        End Using
+    End Sub
+
+    Private Sub ImportControls()
+        Using dlg As New OpenFileDialog With {
+            .Title = "操作設定のインポート", .Filter = "JSON ファイル (*.json)|*.json|すべてのファイル (*.*)|*.*", .CheckFileExists = True}
+            If Not RunDialog(dlg) Then Return
+            Try
+                _input.Config.LoadFromJson(IO.File.ReadAllText(dlg.FileName))
+                Toast("インポートしました")
+            Catch ex As Exception
+                Toast("読み込めませんでした: " & ex.Message)
+            End Try
+        End Using
     End Sub
 
     Private Sub DrawSlider(g As Graphics, label As String, r As RectangleF, value As Single)
@@ -1033,7 +1178,7 @@ Partial Public Class MainForm
             Case Screen.Settings
                 help = "Esc：もどる"
             Case Screen.Countdown, Screen.Playing
-                help = "←→：移動　↓：高速落下　Space：一気に落とす　Z/X(↑)：回転　Esc×2：やめる"
+                help = "←→：移動　↓：高速落下　Esc×2：やめる　（キー設定はタイトルの「せってい」）"
             Case Screen.Result
                 help = "Enter：再戦　Esc：タイトルへ"
             Case Else

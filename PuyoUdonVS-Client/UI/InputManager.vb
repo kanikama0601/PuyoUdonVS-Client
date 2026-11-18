@@ -17,13 +17,13 @@ Public Class InputManager
 
     Private ReadOnly _pressed As New HashSet(Of Keys)
     Private ReadOnly _held As New Dictionary(Of Keys, Integer)
+    ''' <summary>キーの割り当て。</summary>
+    Public Property Config As New KeyConfig()
 
-    Public Shared ReadOnly LeftKeys As Keys() = {Keys.Left, Keys.A}
-    Public Shared ReadOnly RightKeys As Keys() = {Keys.Right, Keys.D}
-    Public Shared ReadOnly DownKeys As Keys() = {Keys.Down, Keys.S}
-    Public Shared ReadOnly CwKeys As Keys() = {Keys.X, Keys.Up, Keys.W}
-    Public Shared ReadOnly CcwKeys As Keys() = {Keys.Z}
-    Public Shared ReadOnly HardKeys As Keys() = {Keys.Space}
+    ''' <summary>このフレームで押されたキー（OS の自動リピートは除く）。</summary>
+    Public Function PressedKeys() As Keys()
+        Return _pressed.ToArray()
+    End Function
 
     Private _leftFrames, _rightFrames, _cwFrames, _ccwFrames As Integer
 
@@ -52,6 +52,12 @@ Public Class InputManager
     ''' </summary>
     Public Function Sample(active As Boolean) As GameInput
         Dim g As GameInput
+        Dim LeftKeys = Config.KeysOf(GameAction.MoveLeft)
+        Dim RightKeys = Config.KeysOf(GameAction.MoveRight)
+        Dim DownKeys = Config.KeysOf(GameAction.SoftDrop)
+        Dim CwKeys = Config.KeysOf(GameAction.RotateCW)
+        Dim CcwKeys = Config.KeysOf(GameAction.RotateCCW)
+        Dim HardKeys = Config.KeysOf(GameAction.HardDrop)
         g.MoveLeft = Repeat(WasPressed(LeftKeys), IsHeld(active, LeftKeys), _leftFrames, MoveDelay, MoveRepeat)
         g.MoveRight = Repeat(WasPressed(RightKeys), IsHeld(active, RightKeys), _rightFrames, MoveDelay, MoveRepeat)
         If g.MoveLeft AndAlso g.MoveRight Then

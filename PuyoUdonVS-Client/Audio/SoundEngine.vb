@@ -6,6 +6,7 @@ Imports NAudio.Wave.SampleProviders
 Public Enum Sfx
     Move      ' move.mp3     : 左右移動
     Click     ' click.mp3    : ボタン
+    Fallen    ' fallen.mp3   : うどんの落下（着地）
     Rotate    ' rotate.mp3   : 回転
     Rensa     ' rensa.mp3    : 連鎖（消える）
     Ozyama    ' ozyama.mp3   : おじゃまが降ってきた

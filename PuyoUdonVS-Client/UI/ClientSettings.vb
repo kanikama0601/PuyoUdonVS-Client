@@ -9,6 +9,8 @@ Public Class ClientSettings
     Public Property Room As String = ""
     Public Property BgmVolume As Single = 0.6F
     Public Property SeVolume As Single = 0.8F
+    ''' <summary>操作のキー割り当て。Nothing なら初期設定。</summary>
+    Public Property Controls As Dictionary(Of String, String())
 
     Private Shared ReadOnly FilePath As String =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PuyoUdonVS", "client.json")

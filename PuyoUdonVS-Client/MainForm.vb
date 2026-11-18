@@ -107,6 +107,11 @@ Partial Public Class MainForm
         _txtPort.MaxLength = 5
         _txtHost.TabIndex = 0 : _txtPort.TabIndex = 1 : _txtName.TabIndex = 2 : _txtRoom.TabIndex = 3
 
+        Try
+            _input.Config.LoadFrom(_settings.Controls)
+        Catch
+            _input.Config.ResetToDefault() ' 壊れた設定は初期設定に戻す
+        End Try
         _txtHost.Text = _settings.Host
         _txtPort.Text = _settings.Port.ToString()
         _txtName.Text = _settings.Name
@@ -175,6 +180,7 @@ Partial Public Class MainForm
             _settings.Name = _txtName.Text.Trim()
             _settings.Room = _txtRoom.Text.Trim()
         End If
+        _settings.Controls = _input.Config.ToDictionary()
         If _sound IsNot Nothing Then
             _settings.BgmVolume = _sound.BgmVolume
             _settings.SeVolume = _sound.SeVolume
@@ -249,7 +255,7 @@ Partial Public Class MainForm
             Case Screen.Title
                 If _input.WasPressed(Keys.Escape) Then ShowTitleMessage("", False)
             Case Screen.Settings
-                If _input.WasPressed(Keys.Escape) Then CloseSettings()
+                UpdateSettings()
             Case Screen.Waiting, Screen.Connecting
                 If _input.WasPressed(Keys.Escape) Then LeaveToTitle("")
         End Select
@@ -528,6 +534,7 @@ Partial Public Class MainForm
                 Case GameEventKind.Rotated
                     _sound?.Play(Sfx.Rotate)
                 Case GameEventKind.Locked
+                    _sound?.Play(Sfx.Fallen)
                     If ev.Value = 1 Then _shake = Math.Max(_shake, 2.5F)
                 Case GameEventKind.StateChanged
                     Send(Protocol.State(_game.Field.ToBoardString(), ev.Value))
