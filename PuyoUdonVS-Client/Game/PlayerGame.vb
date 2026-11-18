@@ -23,6 +23,8 @@ Public Enum GameEventKind
     EraseStarted
     ''' <summary>おじゃまそばが降ってきた。Value=個数。</summary>
     GarbageDropped
+    ''' <summary>降ってきたおじゃまそばが着地した。Value=個数。</summary>
+    GarbageLanded
     ''' <summary>連鎖が終わった。Value=最終の連鎖数。</summary>
     ChainEnded
     GameOver
@@ -99,6 +101,7 @@ Public Class PlayerGame
     Private _lastRotateFail As Integer = -1000
     Private _lastSentPiece As (X As Integer, Y As Integer, R As Integer) = (-99, -99, -99)
     Private _garbageDropping As Boolean
+    Private _garbageCount As Integer
 
     Public Sub Start(seed As Integer)
         _seq = New PieceSequence(seed)
@@ -356,6 +359,7 @@ Public Class PlayerGame
         Events.Add(New GameEvent(GameEventKind.StateChanged, Chain))
         If _garbageDropping Then
             _garbageDropping = False
+            Events.Add(New GameEvent(GameEventKind.GarbageLanded, _garbageCount))
             Spawn()
             Return
         End If
@@ -430,6 +434,7 @@ Public Class PlayerGame
             Next
         Next
         Events.Add(New GameEvent(GameEventKind.GarbageDropped, n))
+        _garbageCount = n
         _garbageDropping = True
         Phase = Phases.Settling
         If FallingCells.Count = 0 Then OnSettled()

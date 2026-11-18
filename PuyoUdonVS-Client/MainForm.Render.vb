@@ -1,4 +1,4 @@
-Imports System.Drawing.Drawing2D
+﻿Imports System.Drawing.Drawing2D
 Imports System.Drawing.Imaging
 Imports System.Drawing.Text
 
@@ -30,7 +30,6 @@ Partial Public Class MainForm
     Private ReadOnly _fonts As New Dictionary(Of (Single, Boolean), Font)
     Private ReadOnly _buttons As New List(Of UiButton)
     Private _mouse As PointF = New PointF(-1, -1)
-    Private _draggingVolume As Boolean
     Private _goFrames As Integer
     Private _toast As String = ""
     Private _toastFrames As Integer
@@ -231,15 +230,23 @@ Partial Public Class MainForm
     ' マウス
     ' =====================================================================
 
-    Private Shared ReadOnly SpeakerRect As New RectangleF(792, 608, 26, 26)
-    Private Shared ReadOnly VolumeBar As New RectangleF(826, 614, 116, 14)
+    ' 設定画面のスライダー（論理座標）
+    Private Shared ReadOnly BgmSlider As New RectangleF(300, 268, 360, 16)
+    Private Shared ReadOnly SeSlider As New RectangleF(300, 368, 360, 16)
+    Private _dragSlider As Integer ' 0=なし 1=BGM 2=SE
+
+    Private Shared Function SliderHit(r As RectangleF) As RectangleF
+        Dim h = r
+        h.Inflate(12, 14)
+        Return h
+    End Function
 
     Protected Overrides Sub OnMouseMove(e As MouseEventArgs)
         MyBase.OnMouseMove(e)
         _mouse = ToLogical(e.Location)
-        If _draggingVolume Then SetVolumeFromMouse()
-        Dim hand = SpeakerRect.Contains(_mouse) OrElse VolumeBar.Contains(_mouse) OrElse
-                   _buttons.Any(Function(b) b.Enabled AndAlso b.Rect.Contains(_mouse))
+        If _dragSlider <> 0 Then SetSliderFromMouse()
+        Dim hand = _buttons.Any(Function(b) b.Enabled AndAlso b.Rect.Contains(_mouse)) OrElse
+                   (_screen = Screen.Settings AndAlso (SliderHit(BgmSlider).Contains(_mouse) OrElse SliderHit(SeSlider).Contains(_mouse)))
         Cursor = If(hand, Cursors.Hand, Cursors.Default)
     End Sub
 
@@ -252,19 +259,21 @@ Partial Public Class MainForm
         MyBase.OnMouseDown(e)
         If e.Button <> MouseButtons.Left Then Return
         _mouse = ToLogical(e.Location)
-        If _sound IsNot Nothing Then
-            If SpeakerRect.Contains(_mouse) Then ToggleMute() : Return
-            Dim hit = VolumeBar
-            hit.Inflate(4, 8)
-            If hit.Contains(_mouse) Then
-                _draggingVolume = True
+        If _screen = Screen.Settings AndAlso _sound IsNot Nothing AndAlso _sound.Available Then
+            If SliderHit(BgmSlider).Contains(_mouse) Then
+                _dragSlider = 1
+            ElseIf SliderHit(SeSlider).Contains(_mouse) Then
+                _dragSlider = 2
+            End If
+            If _dragSlider <> 0 Then
                 Capture = True
-                SetVolumeFromMouse()
+                SetSliderFromMouse()
                 Return
             End If
         End If
         For Each b In _buttons.ToArray()
             If b.Enabled AndAlso b.Rect.Contains(_mouse) Then
+                _sound?.Play(Sfx.Click)
                 b.Action?.Invoke()
                 Return
             End If
@@ -275,17 +284,32 @@ Partial Public Class MainForm
 
     Protected Overrides Sub OnMouseUp(e As MouseEventArgs)
         MyBase.OnMouseUp(e)
-        If _draggingVolume Then
-            _draggingVolume = False
+        If _dragSlider <> 0 Then
+            Dim which = _dragSlider
+            _dragSlider = 0
             Capture = False
-            _sound?.Play(Sfx.Click)
+            ' 効果音の音量は、離したときにサンプルを1つ鳴らして確かめられるようにする
+            If which = 2 Then _sound?.Play(Sfx.Rotate)
         End If
     End Sub
 
-    Private Sub SetVolumeFromMouse()
-        Dim v = (_mouse.X - VolumeBar.X) / VolumeBar.Width
-        _sound.Muted = False
-        _sound.Volume = Math.Clamp(v, 0F, 1F)
+    Private Sub SetSliderFromMouse()
+        Dim r = If(_dragSlider = 1, BgmSlider, SeSlider)
+        Dim v = CSng(Math.Round(Math.Clamp((_mouse.X - r.X) / r.Width, 0F, 1F), 2))
+        If _dragSlider = 1 Then _sound.BgmVolume = v Else _sound.SeVolume = v
+    End Sub
+
+    Private Sub OpenSettings()
+        If _screen <> Screen.Title Then Return
+        ShowTitleControls(False)
+        _screen = Screen.Settings
+    End Sub
+
+    Private Sub CloseSettings()
+        _dragSlider = 0
+        Capture = False
+        _screen = Screen.Title
+        ShowTitleControls(True)
     End Sub
 
     ' =====================================================================
@@ -321,6 +345,8 @@ Partial Public Class MainForm
                 DrawTitle(g)
             Case Screen.Connecting, Screen.Waiting
                 DrawWaiting(g)
+            Case Screen.Settings
+                DrawSettings(g)
             Case Screen.Countdown, Screen.Playing, Screen.Result
                 DrawMatch(g)
         End Select
@@ -600,12 +626,48 @@ Partial Public Class MainForm
             DrawText(g, labels(i), 15, FieldX, FieldLabelY(i) + 10, ColBrownDark, StringAlignment.Near)
         Next
         DrawButton(g, New RectangleF(360, 482, 240, 52), "たいせんする！", AddressOf BeginConnect)
+        DrawButton(g, New RectangleF(810, 16, 134, 40), "せってい", AddressOf OpenSettings, primary:=False, fontSize:=18)
 
         If _titleMessage <> "" Then
             Dim c = If(_titleMessageIsError, Color.FromArgb(200, 30, 20), ColBrownDark)
             FillRound(g, New RectangleF(150, 562, 660, 34), 10, Color.FromArgb(230, 255, 255, 255))
             DrawText(g, _titleMessage, 15, 480, 579, c)
         End If
+    End Sub
+
+    ' =====================================================================
+    ' 設定
+    ' =====================================================================
+
+    Private Sub DrawSettings(g As Graphics)
+        DrawLogo(g, 480, 70, 48)
+        Dim card As New RectangleF(240, 140, 480, 400)
+        FillRound(g, New RectangleF(card.X + 4, card.Y + 6, card.Width, card.Height), 20, Color.FromArgb(90, 60, 30, 10))
+        FillRound(g, card, 20, Color.FromArgb(245, 255, 250, 238), ColBrown, 3)
+        DrawText(g, "せってい", 28, 480, 184, ColBrownDark)
+
+        If _sound Is Nothing OrElse Not _sound.Available Then
+            DrawText(g, "サウンドデバイスが見つからないため、音は鳴りません", 16, 480, 320, ColBrown, bold:=False)
+        Else
+            DrawSlider(g, "BGM の音量", BgmSlider, _sound.BgmVolume)
+            DrawSlider(g, "効果音の音量", SeSlider, _sound.SeVolume)
+            DrawText(g, "効果音は、つまみを離すとサンプルが鳴ります", 13, 480, 424, ColBrown, bold:=False)
+        End If
+        DrawButton(g, New RectangleF(380, 470, 200, 46), "もどる (Esc)", AddressOf CloseSettings, primary:=False, fontSize:=18)
+    End Sub
+
+    Private Sub DrawSlider(g As Graphics, label As String, r As RectangleF, value As Single)
+        DrawText(g, label, 18, r.X, r.Y - 24, ColBrownDark, StringAlignment.Near)
+        DrawText(g, $"{CInt(Math.Round(value * 100))}", 18, r.Right, r.Y - 24, ColBrown, StringAlignment.Far)
+        FillRound(g, r, 8, Color.FromArgb(70, 74, 44, 22))
+        Dim fillW = Math.Max(16, r.Width * value)
+        FillRound(g, New RectangleF(r.X, r.Y, fillW, r.Height), 8, ColDashi)
+        Using b As New SolidBrush(Color.White)
+            g.FillEllipse(b, r.X + fillW - 14, r.Y - 4, 24, 24)
+        End Using
+        Using pen As New Pen(ColBrown, 2)
+            g.DrawEllipse(pen, r.X + fillW - 14, r.Y - 4, 24, 24)
+        End Using
     End Sub
 
     ' =====================================================================
@@ -967,44 +1029,18 @@ Partial Public Class MainForm
         Dim help As String
         Select Case _screen
             Case Screen.Title
-                help = "Enter：接続　M：ミュート　PageUp/PageDown：音量"
+                help = "Enter：接続"
+            Case Screen.Settings
+                help = "Esc：もどる"
             Case Screen.Countdown, Screen.Playing
-                help = "←→：移動　↓：高速落下　Space：一気に落とす　Z/X(↑)：回転　Esc×2：やめる　M：ミュート"
+                help = "←→：移動　↓：高速落下　Space：一気に落とす　Z/X(↑)：回転　Esc×2：やめる"
             Case Screen.Result
-                help = "Enter：再戦　Esc：タイトルへ　M：ミュート"
+                help = "Enter：再戦　Esc：タイトルへ"
             Case Else
-                help = "Esc：キャンセル　M：ミュート"
+                help = "Esc：キャンセル"
         End Select
         DrawText(g, help, 14, 16, 621, ColCream, StringAlignment.Near, bold:=False)
 
-        If _sound Is Nothing OrElse Not _sound.Available Then
-            DrawText(g, "サウンドなし", 13, 942, 621, Color.FromArgb(200, 180, 160), StringAlignment.Far, bold:=False)
-            Return
-        End If
-        ' スピーカーアイコン
-        Dim s = SpeakerRect
-        Dim hover = s.Contains(_mouse)
-        Using b As New SolidBrush(If(hover, Color.White, ColCream))
-            g.FillRectangle(b, s.X + 3, s.Y + 9, 6, 8)
-            g.FillPolygon(b, {New PointF(s.X + 8, s.Y + 9), New PointF(s.X + 15, s.Y + 3), New PointF(s.X + 15, s.Y + 23), New PointF(s.X + 8, s.Y + 17)})
-        End Using
-        Using pen As New Pen(If(_sound.Muted, Color.FromArgb(255, 110, 90), ColCream), 2)
-            If _sound.Muted Then
-                g.DrawLine(pen, s.X + 18, s.Y + 9, s.X + 25, s.Y + 17)
-                g.DrawLine(pen, s.X + 25, s.Y + 9, s.X + 18, s.Y + 17)
-            Else
-                g.DrawArc(pen, s.X + 12, s.Y + 8, 8, 10, -60, 120)
-                If _sound.Volume > 0.5 Then g.DrawArc(pen, s.X + 12, s.Y + 4, 13, 18, -60, 120)
-            End If
-        End Using
-        ' 音量バー
-        Dim vb = VolumeBar
-        FillRound(g, vb, 7, Color.FromArgb(120, 0, 0, 0))
-        Dim fillW = Math.Max(14, vb.Width * _sound.Volume)
-        FillRound(g, New RectangleF(vb.X, vb.Y, fillW, vb.Height), 7, If(_sound.Muted, Color.FromArgb(140, 130, 120), ColDashi))
-        Using b As New SolidBrush(Color.White)
-            g.FillEllipse(b, vb.X + fillW - 12, vb.Y - 2, 18, 18)
-        End Using
     End Sub
 
     Private Sub DrawEffects(g As Graphics)

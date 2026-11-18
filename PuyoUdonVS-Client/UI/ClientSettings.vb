@@ -7,8 +7,8 @@ Public Class ClientSettings
     Public Property Port As Integer = Protocol.DefaultPort
     Public Property Name As String = ""
     Public Property Room As String = ""
-    Public Property Volume As Single = 0.6F
-    Public Property Muted As Boolean
+    Public Property BgmVolume As Single = 0.6F
+    Public Property SeVolume As Single = 0.8F
 
     Private Shared ReadOnly FilePath As String =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PuyoUdonVS", "client.json")

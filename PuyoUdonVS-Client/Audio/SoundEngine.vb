@@ -1,60 +1,51 @@
+Imports System.IO
 Imports NAudio.Wave
 Imports NAudio.Wave.SampleProviders
 
+''' <summary>効果音。Resources\SE\ の同名 mp3 に対応する。</summary>
 Public Enum Sfx
-    Move
-    Rotate
-    Land
-    HardDrop
-    Erase1
-    Erase2
-    Erase3
-    Erase4
-    Erase5
-    Erase6
-    Erase7
-    GarbageFall
-    Attack
-    Beep
-    Go
-    Win
-    Lose
-    Click
-    Join
+    Move      ' move.mp3     : 左右移動
+    Click     ' click.mp3    : ボタン
+    Rotate    ' rotate.mp3   : 回転
+    Rensa     ' rensa.mp3    : 連鎖（消える）
+    Ozyama    ' ozyama.mp3   : おじゃまが降ってきた
+    Matching  ' matching.mp3 : 対戦相手が決まった
+    Win       ' win.mp3
+    Lose      ' lose.mp3
 End Enum
 
 ''' <summary>
-''' 効果音とBGM。音声データはすべて起動時にプログラムで合成する（外部ファイル不要）。
-''' NAudio の WaveOutEvent で再生し、ミキサーで重ねて鳴らす。
+''' 効果音とBGM。Resources\SE と Resources\BGM の mp3 を読み込んで NAudio で鳴らす。
+''' BGM は起動時にランダムで1曲選び、終わったら同じ曲を繰り返す。
 ''' </summary>
 Public NotInheritable Class SoundEngine
     Implements IDisposable
 
     Public Const SampleRate As Integer = 44100
+    Private Shared ReadOnly MixFormat As WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 2)
 
     Private _out As WaveOutEvent
     Private _mixer As MixingSampleProvider
-    Private _master As VolumeSampleProvider
-    Private _bgm As LoopProvider
+    Private _bgm As LoopingBgm
     Private ReadOnly _sfx As New Dictionary(Of Sfx, Single())
-    Private _volume As Single = 0.6F
-    Private _muted As Boolean
-    Private _bgmOn As Boolean
+    Private _bgmVolume As Single = 0.6F
+    Private _seVolume As Single = 0.8F
 
     Public ReadOnly Property Available As Boolean
 
     Public Sub New()
         Try
-            Dim fmt = WaveFormat.CreateIeeeFloatWaveFormat(SampleRate, 1)
-            _mixer = New MixingSampleProvider(fmt) With {.ReadFully = True}
-            _master = New VolumeSampleProvider(_mixer)
-            _bgm = New LoopProvider(Synth.RenderBgm(), fmt) With {.Gain = 0.55F}
+            _mixer = New MixingSampleProvider(MixFormat) With {.ReadFully = True}
+            Dim seDir = Path.Combine(AppContext.BaseDirectory, "Resources", "SE")
             For Each s As Sfx In [Enum].GetValues(GetType(Sfx))
-                _sfx(s) = Synth.RenderSfx(s)
+                Try
+                    _sfx(s) = LoadSfx(Path.Combine(seDir, s.ToString().ToLowerInvariant() & ".mp3"))
+                Catch ex As Exception
+                    Debug.WriteLine($"SE load failed ({s}): {ex.Message}")
+                End Try
             Next
             _out = New WaveOutEvent With {.DesiredLatency = 90, .NumberOfBuffers = 3}
-            _out.Init(_master)
-            ApplyVolume()
+            _out.Init(_mixer)
             _out.Play()
             Available = True
         Catch ex As Exception
@@ -64,67 +55,85 @@ Public NotInheritable Class SoundEngine
         End Try
     End Sub
 
-    ''' <summary>全体の音量（0〜1）。</summary>
-    Public Property Volume As Single
+    ''' <summary>あらゆる形式の入力を、ミキサーの形式（44.1kHz・ステレオ・float）にそろえる。</summary>
+    Private Shared Function ToMixFormat(src As ISampleProvider) As ISampleProvider
+        Dim p = src
+        If p.WaveFormat.SampleRate <> SampleRate Then p = New WdlResamplingSampleProvider(p, SampleRate)
+        If p.WaveFormat.Channels = 1 Then p = New MonoToStereoSampleProvider(p)
+        Return p
+    End Function
+
+    Private Shared Function LoadSfx(path As String) As Single()
+        Using reader As New Mp3FileReader(path)
+            Dim sp = ToMixFormat(reader.ToSampleProvider())
+            Dim data As New List(Of Single)
+            Dim buf(SampleRate * 2 - 1) As Single
+            Do
+                Dim n = sp.Read(buf, 0, buf.Length)
+                If n <= 0 Then Exit Do
+                data.AddRange(New ArraySegment(Of Single)(buf, 0, n))
+            Loop
+            Return data.ToArray()
+        End Using
+    End Function
+
+    ''' <summary>BGMの音量（0〜1）。</summary>
+    Public Property BgmVolume As Single
         Get
-            Return _volume
+            Return _bgmVolume
         End Get
         Set(value As Single)
-            _volume = Math.Clamp(value, 0F, 1F)
-            ApplyVolume()
+            _bgmVolume = Math.Clamp(value, 0F, 1F)
+            If _bgm IsNot Nothing Then _bgm.Gain = Curve(_bgmVolume) * 0.7F
         End Set
     End Property
 
-    Public Property Muted As Boolean
+    ''' <summary>効果音の音量（0〜1）。</summary>
+    Public Property SeVolume As Single
         Get
-            Return _muted
+            Return _seVolume
         End Get
-        Set(value As Boolean)
-            _muted = value
-            ApplyVolume()
+        Set(value As Single)
+            _seVolume = Math.Clamp(value, 0F, 1F)
         End Set
     End Property
 
-    Private Sub ApplyVolume()
-        If _master Is Nothing Then Return
-        ' 耳の感覚に合わせて2乗カーブにする
-        _master.Volume = If(_muted, 0F, _volume * _volume)
-    End Sub
+    ' 耳の感覚に合わせて2乗カーブにする
+    Private Shared Function Curve(v As Single) As Single
+        Return v * v
+    End Function
 
-    Public Sub Play(s As Sfx, Optional gain As Single = 1.0F)
+    Public Sub Play(s As Sfx)
         If Not Available Then Return
-        _mixer.AddMixerInput(New OneShotProvider(_sfx(s), _mixer.WaveFormat, gain))
+        Dim data As Single() = Nothing
+        If Not _sfx.TryGetValue(s, data) Then Return
+        Dim gain = Curve(_seVolume)
+        If gain <= 0F Then Return
+        _mixer.AddMixerInput(New OneShotProvider(data, MixFormat, gain))
     End Sub
 
-    Public Sub PlayErase(chain As Integer)
-        Play(CType(Sfx.Erase1 + Math.Clamp(chain, 1, 7) - 1, Sfx))
-    End Sub
-
-    Public Property BgmPlaying As Boolean
-        Get
-            Return _bgmOn
-        End Get
-        Set(value As Boolean)
-            If Not Available Then Return
-            If value = _bgmOn Then Return
-            _bgmOn = value
-            If value Then
-                _mixer.AddMixerInput(_bgm)
-            Else
-                _mixer.RemoveMixerInput(_bgm)
-            End If
-        End Set
-    End Property
-
-    ''' <summary>BGMの音量だけを変える（結果画面で少し下げるなど）。</summary>
-    Public Sub SetBgmGain(g As Single)
-        If _bgm IsNot Nothing Then _bgm.Gain = g
+    ''' <summary>BGM フォルダの mp3 からランダムに1曲選んで、ループ再生を始める。</summary>
+    Public Sub StartBgm()
+        If Not Available OrElse _bgm IsNot Nothing Then Return
+        Try
+            Dim dir = Path.Combine(AppContext.BaseDirectory, "Resources", "BGM")
+            If Not Directory.Exists(dir) Then Return
+            Dim files = Directory.GetFiles(dir, "*.mp3")
+            If files.Length = 0 Then Return
+            _bgm = New LoopingBgm(files(Random.Shared.Next(files.Length)))
+            _bgm.Gain = Curve(_bgmVolume) * 0.7F
+            _mixer.AddMixerInput(_bgm)
+        Catch ex As Exception
+            _bgm = Nothing
+            Debug.WriteLine("BGM failed: " & ex.Message)
+        End Try
     End Sub
 
     Public Sub Dispose() Implements IDisposable.Dispose
         Try
             _out?.Stop()
             _out?.Dispose()
+            _bgm?.Close()
         Catch
         End Try
         _out = Nothing
@@ -152,27 +161,60 @@ Public NotInheritable Class SoundEngine
         End Function
     End Class
 
-    ''' <summary>繰り返し鳴らす音（BGM）。</summary>
-    Private NotInheritable Class LoopProvider
+    ''' <summary>mp3 を読みながら鳴らし、終わったら最初から繰り返す（BGM）。</summary>
+    Private NotInheritable Class LoopingBgm
         Implements ISampleProvider
-        Private ReadOnly _data As Single()
-        Private _pos As Integer
-        Public Property Gain As Single = 1.0F
+        Private ReadOnly _path As String
+        Private _reader As Mp3FileReader
+        Private _src As ISampleProvider
         Private _cur As Single = 0F
+        Public Property Gain As Single = 1.0F
         Public ReadOnly Property WaveFormat As WaveFormat Implements ISampleProvider.WaveFormat
 
-        Public Sub New(data As Single(), fmt As WaveFormat)
-            _data = data : WaveFormat = fmt
+        Public Sub New(path As String)
+            _path = path
+            WaveFormat = MixFormat
+            Open()
+        End Sub
+
+        Private Sub Open()
+            _reader?.Dispose()
+            _reader = New Mp3FileReader(_path)
+            _src = ToMixFormat(_reader.ToSampleProvider())
+        End Sub
+
+        Public Sub Close()
+            _reader?.Dispose()
+            _reader = Nothing
         End Sub
 
         Public Function Read(buffer() As Single, offset As Integer, count As Integer) As Integer Implements ISampleProvider.Read
+            Dim total = 0
+            Try
+                Dim justReopened = False
+                While total < count AndAlso _reader IsNot Nothing
+                    Dim n = _src.Read(buffer, offset + total, count - total)
+                    If n > 0 Then
+                        total += n
+                        justReopened = False
+                    ElseIf justReopened Then
+                        Exit While ' 中身が空のファイル
+                    Else
+                        Open() ' 曲の終わり: 同じ曲を最初から
+                        justReopened = True
+                    End If
+                End While
+            Catch ex As Exception
+                Debug.WriteLine("BGM read error: " & ex.Message)
+            End Try
             Dim target = Gain
-            For i = 0 To count - 1
+            For i = 0 To total - 1
                 ' 音量変更でプチノイズが出ないよう、少しずつ近づける
-                _cur += (target - _cur) * 0.0005F
-                buffer(offset + i) = _data(_pos) * _cur
-                _pos += 1
-                If _pos >= _data.Length Then _pos = 0
+                _cur += (target - _cur) * 0.0003F
+                buffer(offset + i) *= _cur
+            Next
+            For i = total To count - 1
+                buffer(offset + i) = 0F
             Next
             Return count
         End Function

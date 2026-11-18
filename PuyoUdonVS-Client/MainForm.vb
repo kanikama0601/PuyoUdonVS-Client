@@ -15,6 +15,7 @@ Partial Public Class MainForm
         Countdown
         Playing
         Result
+        Settings
     End Enum
 
     Public Const LogicalW As Integer = 960
@@ -142,10 +143,9 @@ Partial Public Class MainForm
                              wa.Y + Math.Max(0, (wa.Height - Height) \ 2))
 
         _sound = New SoundEngine()
-        _sound.Volume = _settings.Volume
-        _sound.Muted = _settings.Muted
-        _sound.BgmPlaying = True
-        _sound.SetBgmGain(0.4F)
+        _sound.BgmVolume = _settings.BgmVolume
+        _sound.SeVolume = _settings.SeVolume
+        _sound.StartBgm()
 
         LayoutTitleControls()
         ShowTitleControls(True)
@@ -176,8 +176,8 @@ Partial Public Class MainForm
             _settings.Room = _txtRoom.Text.Trim()
         End If
         If _sound IsNot Nothing Then
-            _settings.Volume = _sound.Volume
-            _settings.Muted = _sound.Muted
+            _settings.BgmVolume = _sound.BgmVolume
+            _settings.SeVolume = _sound.SeVolume
         End If
         _settings.Save()
     End Sub
@@ -248,6 +248,8 @@ Partial Public Class MainForm
                 If _input.WasPressed(Keys.Escape) AndAlso _resultFrames > 30 Then LeaveToTitle("")
             Case Screen.Title
                 If _input.WasPressed(Keys.Escape) Then ShowTitleMessage("", False)
+            Case Screen.Settings
+                If _input.WasPressed(Keys.Escape) Then CloseSettings()
             Case Screen.Waiting, Screen.Connecting
                 If _input.WasPressed(Keys.Escape) Then LeaveToTitle("")
         End Select
@@ -258,22 +260,7 @@ Partial Public Class MainForm
 
     Private Sub HandleGlobalKeys()
         If _txtHost.Focused OrElse _txtPort.Focused OrElse _txtName.Focused OrElse _txtRoom.Focused Then Return
-        If _sound Is Nothing Then Return
         If _input.WasPressed(Keys.F3) Then _showFps = Not _showFps
-        If _input.WasPressed(Keys.M) Then ToggleMute()
-        If _input.WasPressed(Keys.PageUp, Keys.Oemplus, Keys.Add) Then ChangeVolume(0.1F)
-        If _input.WasPressed(Keys.PageDown, Keys.OemMinus, Keys.Subtract) Then ChangeVolume(-0.1F)
-    End Sub
-
-    Private Sub ToggleMute()
-        _sound.Muted = Not _sound.Muted
-        If Not _sound.Muted Then _sound.Play(Sfx.Click)
-    End Sub
-
-    Private Sub ChangeVolume(delta As Single)
-        _sound.Muted = False
-        _sound.Volume = CSng(Math.Round(_sound.Volume + delta, 1))
-        _sound.Play(Sfx.Click)
     End Sub
 
     ' =====================================================================
@@ -305,13 +292,17 @@ Partial Public Class MainForm
 
     Private Sub HandleEnterKey()
         If _screen = Screen.Result AndAlso _resultFrames > 30 Then
-            If CanRematch() AndAlso Not _iWantRematch Then RequestRematch()
+            If CanRematch() AndAlso Not _iWantRematch Then
+                _sound?.Play(Sfx.Click)
+                RequestRematch()
+            End If
         End If
     End Sub
 
     Private Sub TitleTextBox_KeyDown(sender As Object, e As KeyEventArgs)
         If e.KeyCode = Keys.Enter Then
             e.SuppressKeyPress = True
+            _sound?.Play(Sfx.Click)
             BeginConnect()
         End If
     End Sub
@@ -342,7 +333,6 @@ Partial Public Class MainForm
         _myName = name
         _roomId = room
         SaveSettings()
-        _sound?.Play(Sfx.Click)
         ShowTitleMessage("", False)
         ShowTitleControls(False)
         _screen = Screen.Connecting
@@ -392,10 +382,7 @@ Partial Public Class MainForm
             Case "JOINED"
                 _myPlayer = m.Int("player", 1)
                 _roomId = m.Str("room", _roomId)
-                If _screen = Screen.Connecting Then
-                    _screen = Screen.Waiting
-                    _sound?.Play(Sfx.Join)
-                End If
+                If _screen = Screen.Connecting Then _screen = Screen.Waiting
             Case "WAITING"
                 If _screen = Screen.Connecting OrElse _screen = Screen.Waiting Then _screen = Screen.Waiting
             Case "START"
@@ -408,7 +395,6 @@ Partial Public Class MainForm
                 Dim n = m.Int("count")
                 If n > 0 AndAlso _screen = Screen.Playing AndAlso _game.Phase <> PlayerGame.Phases.Dead Then
                     _game.AddGarbage(n)
-                    _sound?.Play(Sfx.Attack, 0.7F)
                 End If
             Case "RESULT"
                 ShowResult(m.Int("winner"), m.Str("reason", "gameover"))
@@ -418,7 +404,6 @@ Partial Public Class MainForm
                 Toast("相手の接続が切れました")
             Case "OPP_REMATCH"
                 _oppWantsRematch = True
-                _sound?.Play(Sfx.Join)
             Case "ERROR"
                 Dim code = m.Int("code")
                 If (code = 1003 OrElse code = 1004) AndAlso
@@ -453,9 +438,7 @@ Partial Public Class MainForm
         End If
         _game.StopGame()
         _screen = Screen.Title
-        _sound?.SetBgmGain(0.4F)
         ShowTitleMessage(message, message <> "")
-        If message <> "" Then _sound?.Play(Sfx.Lose, 0.5F)
         ShowTitleControls(True)
     End Sub
 
@@ -493,24 +476,17 @@ Partial Public Class MainForm
         _screen = Screen.Countdown
         _input.Reset()
         ShowTitleControls(False)
-        _sound?.SetBgmGain(0.55F)
-        If _countdownTotal = 0 Then BeginPlaying() Else _sound?.Play(Sfx.Beep)
+        _sound?.Play(Sfx.Matching)
+        If _countdownTotal = 0 Then BeginPlaying()
     End Sub
 
     Private Sub UpdateCountdown()
-        Dim before = (_countdownFrames + 59) \ 60
         _countdownFrames -= 1
-        Dim after = (_countdownFrames + 59) \ 60
-        If _countdownFrames <= 0 Then
-            BeginPlaying()
-        ElseIf after <> before Then
-            _sound?.Play(Sfx.Beep)
-        End If
+        If _countdownFrames <= 0 Then BeginPlaying()
     End Sub
 
     Private Sub BeginPlaying()
         _screen = Screen.Playing
-        _sound?.Play(Sfx.Go)
         _input.Reset()
         _game.Start(_seed)
         _goFrames = 50
@@ -552,21 +528,19 @@ Partial Public Class MainForm
                 Case GameEventKind.Rotated
                     _sound?.Play(Sfx.Rotate)
                 Case GameEventKind.Locked
-                    _sound?.Play(If(ev.Value = 1, Sfx.HardDrop, Sfx.Land))
                     If ev.Value = 1 Then _shake = Math.Max(_shake, 2.5F)
                 Case GameEventKind.StateChanged
                     Send(Protocol.State(_game.Field.ToBoardString(), ev.Value))
                 Case GameEventKind.EraseStarted
                     Send(Protocol.Clear(ev.Value, ev.Value2))
-                    _sound?.PlayErase(ev.Value2)
-                    If ev.Value2 >= 2 Then _sound?.Play(Sfx.Attack, 0.5F)
+                    _sound?.Play(Sfx.Rensa)
                     _myChainShow = ev.Value2
                     _myChainShowFrames = 150
                     SpawnEraseEffects(True, _game.ErasingCells, _game.Field)
                     Dim c = _game.LastEraseCenter
                     AddChainText(True, c.X, c.Y, ev.Value2)
-                Case GameEventKind.GarbageDropped
-                    _sound?.Play(Sfx.GarbageFall)
+                Case GameEventKind.GarbageLanded
+                    _sound?.Play(Sfx.Ozyama)
                     _shake = Math.Max(_shake, Math.Min(8.0F, 2 + ev.Value / 4.0F))
                 Case GameEventKind.GameOver
                     If Not _gameOverSent Then
@@ -609,7 +583,7 @@ Partial Public Class MainForm
             SpawnOppEraseEffects(CountRemoved(before))
             _oppChainShowFrames = 150
             _oppMaxChain = Math.Max(_oppMaxChain, chain)
-            _sound?.PlayErase(chain)
+            _sound?.Play(Sfx.Rensa)
             AddChainText(False, 2.5F, 6, chain)
         End If
         _oppChain = chain
@@ -650,7 +624,6 @@ Partial Public Class MainForm
             _sound?.Play(Sfx.Lose)
         End If
         If reason = "left" Then _oppLeft = True
-        _sound?.SetBgmGain(0.3F)
     End Sub
 
     Private Function CanRematch() As Boolean
@@ -660,7 +633,6 @@ Partial Public Class MainForm
     Private Sub RequestRematch()
         _iWantRematch = True
         Send(Protocol.Simple("REMATCH"))
-        _sound?.Play(Sfx.Click)
     End Sub
 
     ' =====================================================================

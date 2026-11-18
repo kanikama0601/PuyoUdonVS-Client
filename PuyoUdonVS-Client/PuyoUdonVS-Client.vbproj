@@ -21,12 +21,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- うどんのイラストは exe に埋め込む（リソース名: PuyoUdonVS_Client.Images.<ファイル名>） -->
     <EmbeddedResource Include="Resources\Images\*.png" LogicalName="PuyoUdonVS_Client.Images.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 効果音とBGMは exe と同じ場所の Resources\SE, Resources\BGM にコピーする -->
+    <None Update="Resources\BGM\*.mp3" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Resources\SE\*.mp3" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
