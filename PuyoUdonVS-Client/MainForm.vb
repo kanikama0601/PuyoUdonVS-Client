@@ -136,7 +136,10 @@ Partial Public Class MainForm
         Dim wa = Global.System.Windows.Forms.Screen.FromControl(Me).WorkingArea
         Dim sc = Math.Min(dpi, Math.Min((wa.Width - 40) / CSng(LogicalW), (wa.Height - 60) / CSng(LogicalH)))
         ClientSize = New Size(CInt(LogicalW * sc), CInt(LogicalH * sc))
-        CenterToScreen()
+        ' CenterToScreen() はマウスのあるモニターへ移すので、DPI の違うモニターだと
+        ' 移動後にウィンドウが縮んで左上に寄ってしまう。大きさを決めたのと同じモニターの中央に置く。
+        Location = New Point(wa.X + Math.Max(0, (wa.Width - Width) \ 2),
+                             wa.Y + Math.Max(0, (wa.Height - Height) \ 2))
 
         _sound = New SoundEngine()
         _sound.Volume = _settings.Volume

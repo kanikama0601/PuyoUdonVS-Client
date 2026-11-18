@@ -743,25 +743,6 @@ Partial Public Class MainForm
         End Using
     End Sub
 
-    ''' <summary>同じ種類で隣り合ううどんを帯でつなぐ（グループが見やすいように）。</summary>
-    Private Sub DrawConnectors(g As Graphics, bx As Single, by As Single, cells As Byte(,), hidden As Func(Of Integer, Integer, Boolean))
-        For x = 0 To Field.Cols - 1
-            For y = 0 To Field.Rows - 1
-                Dim k = cells(x, y)
-                If k < 1 OrElse k > 4 OrElse hidden(x, y) Then Continue For
-                Dim c = Color.FromArgb(220, Assets.KindColors(k))
-                Using b As New SolidBrush(c)
-                    If x + 1 < Field.Cols AndAlso cells(x + 1, y) = k AndAlso Not hidden(x + 1, y) Then
-                        g.FillRectangle(b, bx + x * Cell + Cell / 2.0F, by + y * Cell + Cell * 0.25F, Cell, Cell * 0.5F)
-                    End If
-                    If y + 1 < Field.Rows AndAlso cells(x, y + 1) = k AndAlso Not hidden(x, y + 1) Then
-                        g.FillRectangle(b, bx + x * Cell + Cell * 0.25F, by + y * Cell + Cell / 2.0F, Cell * 0.5F, Cell)
-                    End If
-                End Using
-            Next
-        Next
-    End Sub
-
     Private Function DeadOffset(frames As Integer, x As Integer) As Single
         If frames < 0 Then Return 0
         Dim t = Math.Max(0, frames - x * 3)
@@ -775,7 +756,6 @@ Partial Public Class MainForm
         Dim erasing As New HashSet(Of Point)(_game.ErasingCells)
         Dim hidden As Func(Of Integer, Integer, Boolean) = Function(x, y) erasing.Contains(New Point(x, y)) OrElse _game.IsCellAnimating(x, y)
 
-        If _myDeadFrames < 0 Then DrawConnectors(g, MyBoardX, BoardY, cells, hidden)
         For x = 0 To Field.Cols - 1
             Dim dy = DeadOffset(_myDeadFrames, x)
             For y = 0 To Field.Rows - 1
@@ -836,18 +816,14 @@ Partial Public Class MainForm
 
     Private Sub DrawGhost(g As Graphics, bx As Single, p As Point, kind As Byte)
         If p.Y < 0 Then Return
-        Dim c = Assets.KindColors(kind)
-        Using pen As New Pen(Color.FromArgb(200, c), 3) With {.DashStyle = DashStyle.Dot}
-            g.DrawEllipse(pen, bx + p.X * Cell + 9, BoardY + p.Y * Cell + 9, Cell - 18, Cell - 18)
-        End Using
+        ' 色の円は使わず、うどん画像を薄く表示する
+        DrawSpriteFaded(g, kind, bx + p.X * Cell, BoardY + p.Y * Cell, Cell, 0.35F)
     End Sub
 
     Private Sub DrawOppBoardContents(g As Graphics)
         Dim st = g.Save()
         g.SetClip(New RectangleF(OppBoardX, BoardY, BoardW, BoardH))
         Dim cells = _oppField.CopyCells()
-        Dim hidden As Func(Of Integer, Integer, Boolean) = Function(x, y) False
-        If _oppDeadFrames < 0 Then DrawConnectors(g, OppBoardX, BoardY, cells, hidden)
         For x = 0 To Field.Cols - 1
             Dim dy = DeadOffset(_oppDeadFrames, x)
             For y = 0 To Field.Rows - 1

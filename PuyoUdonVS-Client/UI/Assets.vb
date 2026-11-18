@@ -14,7 +14,7 @@ Public NotInheritable Class Assets
     Private Shared ReadOnly KindFiles As String() = {"", "bukkake", "nabeyaki", "curry", "kamatama", "kakesoba"}
     Public Shared ReadOnly KindNames As String() = {"", "ぶっかけ", "鍋焼き", "カレー", "釜玉", "おじゃまそば"}
 
-    ''' <summary>種類ごとの下地の色（見分けやすくするため）。</summary>
+    ''' <summary>種類ごとの色（消えたときの飛び散りエフェクト用。盤面のうどんには使わない）。</summary>
     Public Shared ReadOnly KindColors As Color() = {
         Color.Transparent,
         Color.FromArgb(88, 186, 92),    ' ぶっかけ: ねぎの緑
@@ -59,7 +59,7 @@ Public NotInheritable Class Assets
         Return New Font(FontFamilyName, sizePx, If(bold, FontStyle.Bold, FontStyle.Regular), GraphicsUnit.Pixel)
     End Function
 
-    ''' <summary>下地つきのセル画像（盤面用）。kind: 1〜5、px: 一辺のデバイスピクセル。</summary>
+    ''' <summary>盤面用のセル画像（下地なし）。kind: 1〜5、px: 一辺のデバイスピクセル。</summary>
     Public Function Cell(kind As Integer, px As Integer) As Bitmap
         px = Math.Max(4, px)
         Dim key = (kind, px)
@@ -70,26 +70,13 @@ Public NotInheritable Class Assets
             g.SmoothingMode = SmoothingMode.AntiAlias
             g.InterpolationMode = InterpolationMode.HighQualityBicubic
             g.PixelOffsetMode = PixelOffsetMode.HighQuality
-            Dim c = KindColors(kind)
-            Dim r As New RectangleF(px * 0.03F, px * 0.03F, px * 0.94F, px * 0.94F)
-            Using path As New GraphicsPath()
-                path.AddEllipse(r)
-                Using pb As New PathGradientBrush(path)
-                    pb.CenterPoint = New PointF(px * 0.4F, px * 0.35F)
-                    pb.CenterColor = Lighten(c, 0.55F)
-                    pb.SurroundColors = {c}
-                    g.FillPath(pb, path)
-                End Using
-                Using pen As New Pen(Darken(c, 0.35F), Math.Max(1.0F, px * 0.04F))
-                    g.DrawPath(pen, path)
-                End Using
-            End Using
+            ' 色の下地は付けず、うどんと器の画像をそのまま使う（あえて見分けにくくする）
             Dim img = KindImage(kind)
             If img IsNot Nothing Then
-                Dim box = px * 0.9F
+                Dim box = px * 0.96F
                 Dim sc = Math.Min(box / img.Width, box / img.Height)
                 Dim w = img.Width * sc, h = img.Height * sc
-                g.DrawImage(img, (px - w) / 2, (px - h) / 2 + px * 0.02F, w, h)
+                g.DrawImage(img, (px - w) / 2, (px - h) / 2, w, h)
             End If
         End Using
         _sprites(key) = bmp
