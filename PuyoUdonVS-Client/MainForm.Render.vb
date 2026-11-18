@@ -197,7 +197,7 @@ Partial Public Class MainForm
 
     Private Sub LayoutTitleControls()
         UpdateScale()
-        Dim f = New Font(_assets.FontFamilyName, Math.Max(9.0F, 17 * _scale), FontStyle.Regular, GraphicsUnit.Pixel)
+        Dim f = New Font(_assets.BodyFamily.Name, Math.Max(9.0F, 17 * _scale), _assets.BodyStyle(False), GraphicsUnit.Pixel)
         Dim boxes = {_txtHost, _txtPort, _txtName, _txtRoom}
         For i = 0 To boxes.Length - 1
             Dim w = If(boxes(i) Is _txtPort, 120.0F, FieldW)
@@ -206,6 +206,8 @@ Partial Public Class MainForm
             boxes(i).Font = f
             If old IsNot Nothing AndAlso old IsNot f AndAlso old IsNot Control.DefaultFont Then old.Dispose()
             boxes(i).Bounds = r
+            ' 1行の TextBox は高さがフォントで決まるので、枠(30px分)の縦中央に置き直す
+            boxes(i).Top = r.Y + (r.Height - boxes(i).Height) \ 2
         Next
     End Sub
 
@@ -432,7 +434,7 @@ Partial Public Class MainForm
     End Sub
 
     Private _fontFamily As FontFamily
-    Private ReadOnly _pathCache As New Dictionary(Of (String, StringAlignment), GraphicsPath)
+    Private ReadOnly _pathCache As New Dictionary(Of (String, StringAlignment, Boolean), GraphicsPath)
     Private Const PathBaseSize As Single = 100
 
     ''' <summary>
@@ -440,9 +442,10 @@ Partial Public Class MainForm
     ''' 原点・基準サイズで作ってキャッシュし、描くときに拡大・移動したコピーを使う。
     ''' </summary>
     Private Sub DrawOutlined(g As Graphics, text As String, size As Single, cx As Single, cy As Single,
-                             fill As Brush, outline As Color, outlineW As Single, Optional align As StringAlignment = StringAlignment.Center)
-        If _fontFamily Is Nothing Then _fontFamily = New FontFamily(_assets.FontFamilyName)
-        Dim key = (text, align)
+                             fill As Brush, outline As Color, outlineW As Single, Optional align As StringAlignment = StringAlignment.Center, Optional titleFont As Boolean = False)
+        _fontFamily = _assets.BodyFamily
+        Dim useTitle = titleFont AndAlso _assets.TitleFont IsNot Nothing
+        Dim key = (text, align, useTitle)
         Dim basePath As GraphicsPath = Nothing
         If Not _pathCache.TryGetValue(key, basePath) Then
             If _pathCache.Count > 400 Then
@@ -451,7 +454,11 @@ Partial Public Class MainForm
             End If
             basePath = New GraphicsPath()
             Using sf As New StringFormat With {.Alignment = align, .LineAlignment = StringAlignment.Center}
-                basePath.AddString(text, _fontFamily, CInt(FontStyle.Bold), PathBaseSize, PointF.Empty, sf)
+                If useTitle Then
+                    basePath.AddString(text, _assets.TitleFont, CInt(FontStyle.Regular), PathBaseSize, PointF.Empty, sf)
+                Else
+                    basePath.AddString(text, _fontFamily, CInt(_assets.BodyStyle(True)), PathBaseSize, PointF.Empty, sf)
+                End If
             End Using
             _pathCache(key) = basePath
         End If
@@ -468,9 +475,9 @@ Partial Public Class MainForm
     End Sub
 
     Private Sub DrawOutlined(g As Graphics, text As String, size As Single, cx As Single, cy As Single,
-                             fill As Color, outline As Color, outlineW As Single, Optional align As StringAlignment = StringAlignment.Center)
+                             fill As Color, outline As Color, outlineW As Single, Optional align As StringAlignment = StringAlignment.Center, Optional titleFont As Boolean = False)
         Using b As New SolidBrush(fill)
-            DrawOutlined(g, text, size, cx, cy, b, outline, outlineW, align)
+            DrawOutlined(g, text, size, cx, cy, b, outline, outlineW, align, titleFont)
         End Using
     End Sub
 
@@ -611,15 +618,15 @@ Partial Public Class MainForm
             Dim bob = CSng(Math.Sin(t * 3 + i * 0.7) * size * 0.06)
             Dim x = startX + i * cw
             Using lg As New LinearGradientBrush(New RectangleF(x - cw, cy - size, cw * 2, size * 2), Color.White, Color.FromArgb(255, 236, 190), LinearGradientMode.Vertical)
-                DrawOutlined(g, chars(i).ToString(), size, x, cy + bob, lg, ColBrownDark, size * 0.16F)
+                DrawOutlined(g, chars(i).ToString(), size, x, cy + bob, lg, ColBrownDark, size * 0.16F, StringAlignment.Center, True)
             End Using
         Next
         Dim vsX = startX + (chars.Length - 0.5F) * cw - size * 0.02F
         Using lg As New LinearGradientBrush(New RectangleF(vsX - size, cy - size, size * 2, size * 2), Color.FromArgb(255, 110, 80), ColRed, LinearGradientMode.Vertical)
-            DrawOutlined(g, "VS", size * 1.05F, vsX, cy, lg, Color.White, size * 0.18F, StringAlignment.Near)
+            DrawOutlined(g, "VS", size * 1.05F, vsX, cy, lg, Color.White, size * 0.18F, StringAlignment.Near, True)
         End Using
         Using lg As New LinearGradientBrush(New RectangleF(vsX - size, cy - size, size * 2, size * 2), Color.FromArgb(255, 110, 80), ColRed, LinearGradientMode.Vertical)
-            DrawOutlined(g, "VS", size * 1.05F, vsX, cy, lg, ColBrownDark, size * 0.07F, StringAlignment.Near)
+            DrawOutlined(g, "VS", size * 1.05F, vsX, cy, lg, ColBrownDark, size * 0.07F, StringAlignment.Near, True)
         End Using
     End Sub
 

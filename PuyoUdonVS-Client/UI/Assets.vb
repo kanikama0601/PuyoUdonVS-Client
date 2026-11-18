@@ -27,6 +27,12 @@ Public NotInheritable Class Assets
     Private ReadOnly _sprites As New Dictionary(Of (Integer, Integer), Bitmap)
     Private ReadOnly _plain As New Dictionary(Of (String, Integer), Bitmap)
     Public ReadOnly FontFamilyName As String
+    Private ReadOnly _privFonts As New List(Of PrivateFontCollection)
+    Private ReadOnly _privData As New List(Of IntPtr)
+    ''' <summary>タイトル用フォント（埋め込みの nakamorikougei）。読み込めなければ Nothing。</summary>
+    Public ReadOnly TitleFont As FontFamily
+    ''' <summary>本文用フォント（埋め込みの umeboshi_zatumemo）。読み込めなければ Nothing。</summary>
+    Public ReadOnly BodyFont As FontFamily
 
     Public Sub New()
         Dim asm = Assembly.GetExecutingAssembly()
@@ -42,8 +48,36 @@ Public NotInheritable Class Assets
                 End Using
             End Using
         Next
+        TitleFont = LoadEmbeddedFont(asm, "nakamorikougei.ttf")
+        BodyFont = LoadEmbeddedFont(asm, "umeboshi_zatumemo.ttf")
         FontFamilyName = PickFont("BIZ UDPGothic", "Yu Gothic UI", "Meiryo UI", "MS UI Gothic")
     End Sub
+
+    <Runtime.InteropServices.DllImport("gdi32.dll")>
+    Private Shared Function AddFontMemResourceEx(pbFont As IntPtr, cbFont As UInteger, pdv As IntPtr, ByRef pcFonts As UInteger) As IntPtr
+    End Function
+
+    Private Function LoadEmbeddedFont(asm As Assembly, fileName As String) As FontFamily
+        Try
+            Using s = asm.GetManifestResourceStream("PuyoUdonVS_Client.Fonts." & fileName)
+                If s Is Nothing Then Return Nothing
+                Dim data(CInt(s.Length) - 1) As Byte
+                s.ReadExactly(data, 0, data.Length)
+                Dim ptr = Runtime.InteropServices.Marshal.AllocCoTaskMem(data.Length)
+                Runtime.InteropServices.Marshal.Copy(data, 0, ptr, data.Length)
+                ' TextBox など GDI 描画のコントロールでも名前で使えるよう、プロセス専用フォントとしても登録する
+                Dim n As UInteger = 0
+                AddFontMemResourceEx(ptr, CUInt(data.Length), IntPtr.Zero, n)
+                Dim pfc As New PrivateFontCollection()
+                pfc.AddMemoryFont(ptr, data.Length)
+                _privData.Add(ptr)
+                _privFonts.Add(pfc)
+                Return pfc.Families(0)
+            End Using
+        Catch
+            Return Nothing
+        End Try
+    End Function
 
     Private Shared Function PickFont(ParamArray names As String()) As String
         Using fonts As New InstalledFontCollection()
@@ -56,7 +90,24 @@ Public NotInheritable Class Assets
     End Function
 
     Public Function MakeFont(sizePx As Single, Optional bold As Boolean = True) As Font
-        Return New Font(FontFamilyName, sizePx, If(bold, FontStyle.Bold, FontStyle.Regular), GraphicsUnit.Pixel)
+        Return New Font(BodyFamily, sizePx, BodyStyle(bold), GraphicsUnit.Pixel)
+    End Function
+
+    ''' <summary>本文用の FontFamily（umeboshi_zatumemo、なければ代替フォント）。</summary>
+    Public ReadOnly Property BodyFamily As FontFamily
+        Get
+            If BodyFont IsNot Nothing Then Return BodyFont
+            If _fallback Is Nothing Then _fallback = New FontFamily(FontFamilyName)
+            Return _fallback
+        End Get
+    End Property
+    Private _fallback As FontFamily
+
+    ''' <summary>そのフォントにある太さだけを返す（umeboshi_zatumemo に太字がなくても落ちないように）。</summary>
+    Public Function BodyStyle(bold As Boolean) As FontStyle
+        If bold AndAlso BodyFamily.IsStyleAvailable(FontStyle.Bold) Then Return FontStyle.Bold
+        If BodyFamily.IsStyleAvailable(FontStyle.Regular) Then Return FontStyle.Regular
+        Return CType([Enum].GetValues(GetType(FontStyle)).Cast(Of FontStyle)().First(Function(st) BodyFamily.IsStyleAvailable(st)), FontStyle)
     End Function
 
     ''' <summary>盤面用のセル画像（下地なし）。kind: 1〜5、px: 一辺のデバイスピクセル。</summary>
@@ -126,6 +177,8 @@ Public NotInheritable Class Assets
 
     Public Sub Dispose() Implements IDisposable.Dispose
         ClearCache()
+        For Each p In _privFonts : p.Dispose() : Next
+        For Each p In _privData : Runtime.InteropServices.Marshal.FreeCoTaskMem(p) : Next
         For Each b In _images.Values : b.Dispose() : Next
         _images.Clear()
     End Sub

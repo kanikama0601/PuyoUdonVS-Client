@@ -27,6 +27,8 @@
   <ItemGroup>
     <!-- うどんのイラストは exe に埋め込む（リソース名: PuyoUdonVS_Client.Images.<ファイル名>） -->
     <EmbeddedResource Include="Resources\Images\*.png" LogicalName="PuyoUdonVS_Client.Images.%(Filename)%(Extension)" />
+    <!-- タイトル用フォント（nakamori）も埋め込む -->
+    <EmbeddedResource Include="Resources\Fonts\*.ttf;Resources\Fonts\*.otf" LogicalName="PuyoUdonVS_Client.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
