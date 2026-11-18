@@ -154,9 +154,10 @@ sealed class Lobby
                         if (room == null || !room.Playing) { c.Send(Err(1004, "invalid state")); return true; }
                         var erased = m["erased"]?.GetValue<int>() ?? 0;
                         var chain = m["chain"]?.GetValue<int>() ?? 1;
-                        var count = Math.Max(1, erased * chain / 2);
-                        Console.WriteLine($"    CLEAR {c.Name} erased={erased} chain={chain} -> GARBAGE {count}");
-                        opp?.Send(new { type = "GARBAGE", count });
+                        var offset = Math.Max(0, m["offset"]?.GetValue<int>() ?? 0);
+                        var count = Math.Max(0, Math.Max(1, erased * chain / 2) - offset);
+                        Console.WriteLine($"    CLEAR {c.Name} erased={erased} chain={chain} offset={offset} -> GARBAGE {count}");
+                        if (count > 0) opp?.Send(new { type = "GARBAGE", count });
                         return true;
                     }
                 case "GAME_OVER":

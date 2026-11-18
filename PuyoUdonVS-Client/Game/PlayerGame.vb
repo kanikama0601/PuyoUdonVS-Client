@@ -34,8 +34,9 @@ Public Structure GameEvent
     Public Kind As GameEventKind
     Public Value As Integer
     Public Value2 As Integer
-    Public Sub New(kind As GameEventKind, Optional value As Integer = 0, Optional value2 As Integer = 0)
-        Me.Kind = kind : Me.Value = value : Me.Value2 = value2
+    Public Value3 As Integer
+    Public Sub New(kind As GameEventKind, Optional value As Integer = 0, Optional value2 As Integer = 0, Optional value3 As Integer = 0)
+        Me.Kind = kind : Me.Value = value : Me.Value2 = value2 : Me.Value3 = value3
     End Sub
 End Structure
 
@@ -377,7 +378,11 @@ Public Class PlayerGame
             LastEraseCenter = New PointF(sx / cells.Count, sy / cells.Count)
             EraseTimer = 0
             Phase = Phases.Erasing
-            Events.Add(New GameEvent(GameEventKind.EraseStarted, erased, Chain))
+            ' 相殺: 今回の攻撃力（サーバーと同じ式）ぶん、予告中のおじゃまそばを打ち消す
+            Dim attack = Math.Max(1, erased * Chain \ 2)
+            Dim offset = Math.Min(PendingGarbage, attack)
+            PendingGarbage -= offset
+            Events.Add(New GameEvent(GameEventKind.EraseStarted, erased, Chain, offset))
             Return
         End If
         If Chain > 0 Then

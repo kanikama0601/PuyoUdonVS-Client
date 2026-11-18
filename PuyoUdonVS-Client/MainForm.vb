@@ -539,7 +539,7 @@ Partial Public Class MainForm
                 Case GameEventKind.StateChanged
                     Send(Protocol.State(_game.Field.ToBoardString(), ev.Value))
                 Case GameEventKind.EraseStarted
-                    Send(Protocol.Clear(ev.Value, ev.Value2))
+                    Send(Protocol.Clear(ev.Value, ev.Value2, ev.Value3))
                     _sound?.Play(Sfx.Rensa)
                     _myChainShow = ev.Value2
                     _myChainShowFrames = 150

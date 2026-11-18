@@ -36,11 +36,13 @@ Public Module Protocol
                      End Sub)
     End Function
 
-    Public Function Clear(erased As Integer, chain As Integer) As String
+    ''' <summary>offset は自分に予告されていたおじゃまそばと相殺した個数（相手へ送る数から引かれる）。</summary>
+    Public Function Clear(erased As Integer, chain As Integer, Optional offset As Integer = 0) As String
         Return Build(Sub(w)
                          w.WriteString("type", "CLEAR")
                          w.WriteNumber("erased", erased)
                          w.WriteNumber("chain", chain)
+                         If offset > 0 Then w.WriteNumber("offset", offset)
                      End Sub)
     End Function
 

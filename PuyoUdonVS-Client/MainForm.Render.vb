@@ -1185,7 +1185,14 @@ Partial Public Class MainForm
             Case Screen.Settings
                 help = "Esc：もどる"
             Case Screen.Countdown, Screen.Playing
-                help = "←→：移動　↓：高速落下　Esc×2：やめる　（キー設定はタイトルの「せってい」）"
+                Dim parts As New List(Of String)
+                For a = 0 To KeyConfig.ActionCount - 1
+                    ' 割り当て済みの一番左のキーだけ表示。未設定の操作は出さない
+                    Dim ks = _input.Config.KeysOf(CType(a, GameAction))
+                    If ks.Length > 0 Then parts.Add(KeyConfig.DisplayName(ks(0)) & "：" & KeyConfig.ActionNames(a))
+                Next
+                parts.Add("Esc×2：やめる")
+                help = String.Join("　", parts)
             Case Screen.Result
                 help = "Enter：再戦　Esc：タイトルへ"
             Case Else
